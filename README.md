@@ -7,4 +7,4 @@ A Clojure library that provides capabilities for session management.
 
 ## License
 
-See [LICENSE](LICENSE.md).
+See [LICENSE](LICENSE).
