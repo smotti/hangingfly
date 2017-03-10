@@ -21,18 +21,18 @@
                (= session-coll (:session-coll mgr))))
       (is (instance? SessionManager mgr)))))
 
-(deftest test-add-session
-  (let [mgr (->SessionManager nil (atom {}))
-        session {:start-time (System/currentTimeMillis)
-                 :valid? true
-                 :session-id "SESSION-ID"}
-        result (#'hangingfly.session-manager/add-session mgr session)]
-    (is (not (empty? result)))
-    (is (= session
-           (get @(:session-coll mgr) (:session-id session))))))
-
 (deftest test-new-session
   (let [mgr (->SessionManager nil (atom {}))
         session (new-session mgr)]
     (is (and (not (nil? session))
-             (:valid? session)))))
+             (:valid? session)))
+    (is (not-empty @(:session-coll mgr)))))
+
+(deftest test-terminate
+  (let [sid "SESSION-ID"
+        session {:session-id sid
+                 :start-time (System/currentTimeMillis)
+                 :valid? true}
+        mgr (->SessionManager nil (atom {sid session}))
+        result (terminate-session mgr sid)]
+    (is (empty? @(:session-coll mgr)))))

@@ -18,8 +18,11 @@
   (new-session
     [this]
     (let [session (make-session)]
-      (add-session this session)
+      (swap! (:session-coll this) assoc (:session-id session) session)
       session))
+  (terminate-session
+    [this sid]
+    (swap! (:session-coll this) dissoc sid))
   )
 
 (defn make-session-manager
@@ -29,7 +32,3 @@
    (make-session-manager session-store (atom {})))
   ([session-store session-coll]
    (->SessionManager session-store session-coll)))
-
-(defn- add-session
-  [mgr session]
-  (swap! (:session-coll mgr) assoc (:session-id session) session))
