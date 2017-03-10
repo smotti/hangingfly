@@ -15,12 +15,20 @@
 (deftest test-generate-salted-hash
   (testing "generate salted-hash of a session id"
     (let [sid (generate-session-id)
-          salted-hash (generate-salted-hash (.getBytes sid StandardCharsets/UTF_8))]
-      (is (string? salted-hash)))))
+          sid-bytes (.getBytes sid StandardCharsets/UTF_8)
+          salted-hash-1 (generate-salted-hash sid-bytes)
+          salted-hash-2 (generate-salted-hash sid-bytes)]
+      (is (and (string? salted-hash-1) (string? salted-hash-2)))
+      (is (not= salted-hash-1 salted-hash-2)))))
 
 (deftest test-make-session
   (testing "with no arguments"
     (let [session (make-session)]
       (is (every? true?
                   (map #(not (nil? (% session)))
-                       default-session-attrs))))))
+                       default-session-attrs)))))
+  (testing "with attributes as argument"
+    (let[start-time (System/currentTimeMillis)
+          attrs {:start-time start-time}
+          session (make-session attrs)]
+      (is (= start-time (:start-time session))))))
