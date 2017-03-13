@@ -8,6 +8,7 @@
   (terminate-session [this sid])
   (valid-session? [this sid])
   (renew-session [this sid])
+  (invalidate-session [this sid])
   (invalidate-sessions [this])
   (get-sessions [this])
   (set-session-attribute [this sid attrs]))
@@ -15,18 +16,36 @@
 (defrecord SessionManager
   [session-store session-coll]
   ISessionManager
+
   (new-session
     [this]
     (let [session (make-session)]
       (swap! (:session-coll this) assoc (:session-id session) session)
       session))
+
   (terminate-session
     [this sid]
     (swap! (:session-coll this) dissoc sid))
+
   (valid-session?
     [this sid]
     (let [session (get @(:session-coll this) sid)]
       (:valid? session)))
+
+  (renew-session
+    [this sid]
+    (let [attrs {:previous-session-id sid}]
+      (invalidate-session this sid)
+      (make-session attrs)))
+
+  (invalidate-session
+    [this sid]
+    (let [session (get @(:session-coll this) sid)
+          invalidated-session (assoc session
+                                     :valid? false
+                                     :end-time (System/currentTimeMillis))]
+      (swap! (:session-coll this) assoc sid invalidated-session)
+      invalidated-session))
   )
 
 (defn make-session-manager
