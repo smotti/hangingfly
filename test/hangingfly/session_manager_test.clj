@@ -70,4 +70,5 @@
         new-session (renew-session mgr old-sid)]
     (is (not= old-sid (:session-id new-session)))
     (is (false? (get-in @(:session-coll mgr) [old-sid :valid?])))
-    (is (= old-sid (:previous-session-id new-session)))))
+    (is (= old-sid (:previous-session-id new-session)))
+    (is (= 2 (count @(:session-coll mgr))))))

@@ -34,9 +34,12 @@
 
   (renew-session
     [this sid]
-    (let [attrs {:previous-session-id sid}]
+    (let [attrs {:previous-session-id sid}
+          new-session (make-session attrs)
+          new-session-id (:session-id new-session)]
       (invalidate-session this sid)
-      (make-session attrs)))
+      (swap! (:session-coll this) assoc new-session-id new-session)
+      new-session))
 
   (invalidate-session
     [this sid]
