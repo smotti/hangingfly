@@ -28,7 +28,7 @@
              (:valid? session)))
     (is (not-empty @(:session-coll mgr)))))
 
-(deftest test-terminate
+(deftest test-terminate-session
   (let [sid "SESSION-ID"
         session {:session-id sid
                  :start-time (System/currentTimeMillis)
