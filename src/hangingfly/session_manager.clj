@@ -36,21 +36,23 @@
   ;         contains all the previous session id up to this point?
   (renew-session
     [this sid]
-    (let [attrs {:previous-session-id sid}
-          new-session (make-session attrs)
-          new-session-id (:session-id new-session)]
-      (invalidate-session this sid)
-      (swap! (:session-coll this) assoc new-session-id new-session)
-      new-session))
+    (when (get @(:session-coll this) sid)
+      (let [attrs {:previous-session-id sid}
+            new-session (make-session attrs)
+            new-session-id (:session-id new-session)]
+        (invalidate-session this sid)
+        (swap! (:session-coll this) assoc new-session-id new-session)
+        new-session)))
 
   (invalidate-session
     [this sid]
-    (let [session (get @(:session-coll this) sid)
-          invalidated-session (assoc session
-                                     :valid? false
-                                     :end-time (System/currentTimeMillis))]
-      (swap! (:session-coll this) assoc sid invalidated-session)
-      invalidated-session))
+    (when (get @(:session-coll this) sid) 
+      (let [session (get @(:session-coll this) sid)
+            invalidated-session (assoc session
+                                       :valid? false
+                                       :end-time (System/currentTimeMillis))]
+        (swap! (:session-coll this) assoc sid invalidated-session)
+        invalidated-session)))
   )
 
 (defn make-session-manager

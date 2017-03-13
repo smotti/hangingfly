@@ -53,23 +53,33 @@
     (is (false? (valid-session? mgr invalid-sid)))))
 
 (deftest test-invalidate-session
-  (let [sid "SESSION-ID"
-        session {:session-id sid
-                 :start-time (System/currentTimeMillis)
-                 :valid? true}
-        mgr (->SessionManager nil (atom {sid session}))
-        result (invalidate-session mgr sid)]
-    (is (false? (:valid? result)))
-    (is (not (nil? (:end-time result))))))
+  (testing "happy path"
+    (let [sid "SESSION-ID"
+          session {:session-id sid
+                   :start-time (System/currentTimeMillis)
+                   :valid? true}
+          mgr (->SessionManager nil (atom {sid session}))
+          result (invalidate-session mgr sid)]
+      (is (false? (:valid? result)))
+      (is (not (nil? (:end-time result))))))
+  (testing "exceptional paths"
+    (let [sid "NO-SUCH-SESSION"
+          mgr (->SessionManager nil (atom {}))]
+      (is (nil? (invalidate-session mgr sid))))))
 
 (deftest test-renew-session
-  (let [old-sid "OLD-SESSION-ID"
-        old-session {:session-id old-sid
-                     :start-time (System/currentTimeMillis)
-                     :valid? true}
-        mgr (->SessionManager nil (atom {old-sid old-session}))
-        new-session (renew-session mgr old-sid)]
-    (is (not= old-sid (:session-id new-session)))
-    (is (false? (get-in @(:session-coll mgr) [old-sid :valid?])))
-    (is (= old-sid (:previous-session-id new-session)))
-    (is (= 2 (count @(:session-coll mgr))))))
+  (testing "happy path"
+    (let [old-sid "OLD-SESSION-ID"
+          old-session {:session-id old-sid
+                       :start-time (System/currentTimeMillis)
+                       :valid? true}
+          mgr (->SessionManager nil (atom {old-sid old-session}))
+          new-session (renew-session mgr old-sid)]
+      (is (not= old-sid (:session-id new-session)))
+      (is (false? (get-in @(:session-coll mgr) [old-sid :valid?])))
+      (is (= old-sid (:previous-session-id new-session)))
+      (is (= 2 (count @(:session-coll mgr))))))
+  (testing "exceptional paths"
+    (let [sid "NO-SUCH-SESSION"
+          mgr (->SessionManager nil (atom {}))]
+      (is (nil? (renew-session mgr sid))))))
