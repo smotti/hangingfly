@@ -10,6 +10,8 @@
 
 (def ^{:dynamic true} *default-prng* (SecureRandom/getInstance "SHA1PRNG"))
 
+(def ^{:dynamic true} *default-digest-algorithm* "SHA-256")
+
 (defrecord Session [session-id
                     start-time
                     end-time
@@ -40,7 +42,7 @@
   "Generates a base64 encoded salted-hash of the given bytes."
   [bs]
   (let [salt (generate-salt)
-        md (MessageDigest/getInstance "SHA-256")
+        md (MessageDigest/getInstance *default-digest-algorithm*)
         digest (.digest md (byte-array (concat (seq bs) (seq salt))))
         buffer (byte-array (+ (count digest) (count salt)))]
     (System/arraycopy digest 0 buffer 0 (count digest))
