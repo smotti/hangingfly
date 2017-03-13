@@ -23,6 +23,10 @@
   (terminate-session
     [this sid]
     (swap! (:session-coll this) dissoc sid))
+  (valid-session?
+    [this sid]
+    (let [session (get @(:session-coll this) sid)]
+      (:valid? session)))
   )
 
 (defn make-session-manager

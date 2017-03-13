@@ -36,3 +36,17 @@
         mgr (->SessionManager nil (atom {sid session}))
         result (terminate-session mgr sid)]
     (is (empty? @(:session-coll mgr)))))
+
+(deftest test-valid-session?
+  (let [valid-sid "SESSION-ID"
+        invalid-sid "INVALID-SESSION-ID"
+        valid-session {:session-id valid-sid
+                       :start-time (System/currentTimeMillis)
+                       :valid? true}
+        invalid-session {:session-id invalid-sid
+                         :start-time (System/currentTimeMillis)
+                         :valid? false}
+        mgr (->SessionManager nil (atom {valid-sid valid-session
+                                         invalid-sid invalid-session}))]
+    (is (valid-session? mgr valid-sid))
+    (is (not (valid-session? mgr invalid-sid)))))
