@@ -29,9 +29,11 @@
 
   (valid-session?
     [this sid]
-    (let [session (get @(:session-coll this) sid)]
-      (:valid? session)))
+    (let [session (get @(:session-coll this) sid {})]
+      (:valid? session false)))
 
+  ; REVIEW: Would it be beneficial to make :previous-session-id a vector that
+  ;         contains all the previous session id up to this point?
   (renew-session
     [this sid]
     (let [attrs {:previous-session-id sid}

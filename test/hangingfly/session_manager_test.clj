@@ -48,8 +48,9 @@
                          :valid? false}
         mgr (->SessionManager nil (atom {valid-sid valid-session
                                          invalid-sid invalid-session}))]
-    (is (valid-session? mgr valid-sid))
-    (is (not (valid-session? mgr invalid-sid)))))
+    (is (true? (valid-session? mgr valid-sid)))
+    (is (false? (valid-session? mgr "NO-SUCH-SESSION")))
+    (is (false? (valid-session? mgr invalid-sid)))))
 
 (deftest test-invalidate-session
   (let [sid "SESSION-ID"
