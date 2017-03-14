@@ -1,7 +1,7 @@
 (ns hangingfly.session-manager
   (:require [hangingfly.session :refer [make-session]]))
 
-(declare add-session)
+(declare add-session timeout?)
 
 (defprotocol ISessionManager
   (new-session [this] [this attrs])
@@ -34,6 +34,7 @@
 
   ; REVIEW: Would it be beneficial to make :previous-session-id a vector that
   ;         contains all the previous session id up to this point?
+  ; REVIEW: And also add to the old session info about the new one!?
   (renew-session
     [this sid]
     (when (get @(:session-coll this) sid)
@@ -53,6 +54,10 @@
                                        :end-time (System/currentTimeMillis))]
         (swap! (:session-coll this) assoc sid invalidated-session)
         invalidated-session)))
+
+  (invalidate-sessions
+    [this]
+    nil)
   )
 
 (defn make-session-manager
