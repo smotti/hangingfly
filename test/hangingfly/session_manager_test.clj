@@ -1,8 +1,10 @@
 (ns hangingfly.session-manager-test
   (:import hangingfly.session_manager.SessionManager)
   (:require [clojure.test :refer :all]
+            [clojure.test.check.generators :refer [fmap generate sample]]
             [hangingfly.session-manager :refer :all]
-            [hangingfly.session-repository.atom :refer [->SessionRepository]]))
+            [hangingfly.session-repository.atom :refer [->SessionRepository]]
+            [hangingfly.session-test-utils :refer :all]))
 
 (deftest test-make-session-manager
   (testing "with no argument"
@@ -85,53 +87,78 @@
           mgr (->SessionManager (->SessionRepository (atom {})))]
       (is (nil? (renew-session mgr sid))))))
 
-;(deftest test-invalidate-sessions
-;  (testing "happy path"
-;    (testing "absolute timeout"
-;      (let [sid "SESSION-ID"
-;            absolute-timeout (* 60 60)
-;            session {:session-id sid
-;                     :absolute-timeout absolute-timeout
-;                     :start-time (- (System/currentTimeMillis)
-;                                    (* absolute-timeout 1000)
-;                                    (* 5 1000) ; Additional 5secs just in case
-;                                    )}
-;            mgr (->SessionManager nil (atom {sid session}))]
-;        (is (not (nil? (invalidate-sessions mgr))))
-;
-;        (let [invalidated-session (get @(:session-coll mgr) sid)]
-;          (is (false? (:valid? invalidated-session)))
-;          (is (not (nil? (:end-time invalidated-session)))))))
-;
-;    (testing "idle timeout"
-;      (let [sid "SESSION-ID"
-;            idle-timeout (* 60 20)
-;            session {:session-id sid
-;                     :idle-timeout idle-timeout
-;                     :start-time (- (System/currentTimeMillis)
-;                                    (* idle-timeout 1000)
-;                                    (* 5 1000))}
-;            mgr (->SessionManager nil (atom {sid session}))]
-;        (is (not (nil? (invalidate-sessions mgr))))
-;        
-;        (let [invalidated-session (get @(:session-coll mgr) sid)]
-;          (is (false? (:valid? invalidated-session)))
-;          (is (not (nil? (:end-time invalidated-session)))))))
-;
-;    (testing "renewal timeout"
-;      (let [sid "SESSION-ID"
-;            renewal-timeout (* 60 5)
-;            session {:session-id sid
-;                     :renewal-timeout renewal-timeout
-;                     :start-time (- (System/currentTimeMillis)
-;                                    (* renewal-timeout 1000)
-;                                    (* 5 1000))}
-;            mgr (->SessionManager nil (atom {sid session}))]
-;        (is (not (nil? (invalidate-sessions mgr))))
-;
-;        (let [invalidated-session (get @(:session-coll mgr) sid)
-;              new-session (into {} [(last @(:session-coll mgr))])]
-;          (is (false? (:valid? invalidated-session)))
-;          (is (not (nil? (:end-time invalidated-session))))
-;          (is (not= sid (:session-id new-session)))
-;          (is (= sid (:previous-session-id new-session))))))))
+(deftest test-session-timeout?
+  (testing "for absolute-timeout"
+    (let [absolute-timeout (* 60 60)
+          scaled-timeout (* absolute-timeout 1000)
+          attrs {:absolute-timeout absolute-timeout
+                 :idle-timeout (* absolute-timeout 3)
+                 :renewal-timeout (* absolute-timeout 3)
+                 :start-time (- (System/currentTimeMillis)
+                                (generate
+                                  (time-offset-gen :min-offset scaled-timeout
+                                                   :max-offset (* scaled-timeout 2))))}
+          session (generate (fmap #(merge % attrs) valid-session-gen))
+          sid (:session-id session)
+          repo (->SessionRepository (atom {sid session}))
+          mgr (->SessionManager repo)]
+      (is (true? (session-timeout? mgr sid))))))
+
+(defn start-time-gen
+  [timeout]
+  (- (System/currentTimeMillis)
+     (generate (time-offset-gen :min-offset timeout
+                                :max-offset (* timeout 2)))))
+
+(deftest test-invalidate-sessions
+  (testing "happy path"
+    (testing "absolute timeout"
+      (let [absolute-timeout (* 60 60)
+            scaled-timeout (* absolute-timeout 1000)
+            sessions (sample
+                       (fmap #(assoc %
+                                     :start-time (start-time-gen scaled-timeout)
+                                     :absolute-timeout absolute-timeout
+                                     :idle-timeout (* absolute-timeout 3)
+                                     :renewal-timeout (* absolute-timeout 2))
+                             valid-session-gen))
+            repo (->SessionRepository (atom (->map sessions)))
+            mgr (->SessionManager repo)
+            result (invalidate-sessions mgr)]
+        (is (and (not-empty result)
+                 (every? #(false? (:valid? %)) result)))
+        (is (every? #(false? (:valid? (second %))) @(:database repo)))))
+
+    (testing "idle timeout"
+      (let [idle-timeout (* 60 20)
+            scaled-timeout (* idle-timeout 1000)
+            sessions (sample
+                       (fmap #(assoc %
+                                     :start-time (start-time-gen scaled-timeout)
+                                     :absolute-timeout (* idle-timeout 3)
+                                     :idle-timeout idle-timeout
+                                     :renewal-timeout (* idle-timeout 3))
+                             valid-session-gen))
+            repo (->SessionRepository (atom (->map sessions)))
+            mgr (->SessionManager repo)
+            result (invalidate-sessions mgr)]
+        (is (and (not-empty result)
+                 (every? #(false? (:valid? %)) result)))
+        (is (every? #(false? (:valid? (second %))) @(:database repo)))))
+
+    (testing "renewal timeout"
+      (let [renewal-timeout (* 60 5)
+            scaled-timeout (* renewal-timeout 1000)
+            sessions (sample
+                       (fmap #(assoc %
+                                     :start-time (start-time-gen scaled-timeout)
+                                     :absolute-timeout (* renewal-timeout 3)
+                                     :idle-timeout (* renewal-timeout 3)
+                                     :renewal-timeout renewal-timeout)
+                             valid-session-gen))
+            repo (->SessionRepository (atom (->map sessions)))
+            mgr (->SessionManager repo)
+            result (invalidate-sessions mgr)]
+        (is (and (not-empty result)
+                 (every? #(false? (:valid? %)) result)))
+        (is (every? #(false? (:valid? (second %))) @(:database repo)))))))

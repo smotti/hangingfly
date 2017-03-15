@@ -11,7 +11,8 @@
   (invalidate-session [this sid])
   (invalidate-sessions [this])
   (get-sessions [this])
-  (set-session-attribute [this sid attrs]))
+  (set-session-attribute [this sid attrs])
+  (session-timeout? [this sid]))
 
 (defrecord SessionManager
   [session-repo]
@@ -40,6 +41,14 @@
         (invalidate-session this sid)
         (add-session (:session-repo this) new-session)
         new-session)))
+  (session-timeout?
+    [this sid]
+    (if-let [session (get-session (:session-repo this) sid)]
+      (let [{:keys [start-time absolute-timeout idle-timeout renewal-timeout]} session
+            timedelta (- (System/currentTimeMillis) start-time)
+            pred #(>= timedelta (* % 1000))]
+        (some pred [absolute-timeout idle-timeout renewal-timeout]))
+      false))
   (invalidate-session
     [this sid]
     (when-let [session (get-session (:session-repo this) sid)] 
@@ -50,7 +59,11 @@
         invalidated-session)))
   (invalidate-sessions
     [this]
-    nil)
+    (let [query #(do %)
+          sessions (execute-query (:session-repo this) query)
+          invalid (filter #(session-timeout? this (:session-id (second %)))
+                          sessions)]
+      (map #(invalidate-session this (:session-id (second %))) invalid)))
   )
 
 (defn make-session-manager

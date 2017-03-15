@@ -1,14 +1,15 @@
 (ns hangingfly.session-test-utils
   (:require [clojure.test.check.generators :as gen]))
 
-(def time-offset-gen
+(defn time-offset-gen
+  [& {:keys [min-offset max-offset] :or {min-offset 1000 max-offset 30000}}]
   (gen/such-that #(not= 0 %)
-                 (gen/large-integer* {:min 1000})))
+                 (gen/large-integer* {:min min-offset :max max-offset})))
 
 (def session-start-time-gen
   (gen/fmap (fn [offset]
               (- (System/currentTimeMillis) offset))
-            time-offset-gen))
+            (time-offset-gen)))
 
 (defn session-end-time-gen
   [start-time & {:keys [absolute-timeout idle-timeout renewal-timeout]}]
@@ -29,9 +30,7 @@
   gen/boolean)
 
 (def session-timeout-gen
-  (let [scale-to-min 10000]
-    (gen/fmap (fn [v] (* v scale-to-min))
-              gen/pos-int)))
+  gen/pos-int)
 
 (def session-gen
   (gen/hash-map :session-id session-id-gen
@@ -63,17 +62,3 @@
   (gen/fmap (fn [s]
               (merge s attrs))
             random-session-gen))
-
-(defn timeout-session-gen
-  [timeout value] 
-  (gen/fmap #(let [start-time (:start-time %)]
-                (assoc % timeout value
-                         :end-time (gen/generate
-                                     (session-end-time-gen start-time
-                                                           timeout
-                                                           value))))
-            session-gen))
-
-(defn sample-timeout-session-gen
-  [timeout value n]
-  (gen/sample (timeout-session-gen timeout value) n))
