@@ -1,9 +1,10 @@
 (ns hangingfly.session-repository-test
   (:import (hangingfly.session_repository.atom SessionRepository))
   (:require [clojure.test :refer :all]
+            [clojure.test.check.generators :refer [sample]]
             [hangingfly.session-repository.core :refer :all]
             [hangingfly.session-repository.atom :refer :all]
-            [hangingfly.session-test-utils :refer [->map gen-random-sessions]]))
+            [hangingfly.session-test-utils :refer :all]))
 
 (deftest test-make-session-repository
   (let [repo (make-session-repository)]
@@ -69,7 +70,7 @@
 (deftest test-execute-query
   (let [query (fn [sessions]
                 (filter #(true? (:valid? (second %))) sessions))
-        sessions (gen-random-sessions 60)
+        sessions (sample random-session-gen 60)
         repo (->SessionRepository (atom (->map sessions)))
         result (execute-query repo query)]
     (is (every? #(true? (:valid? (second %))) result))))

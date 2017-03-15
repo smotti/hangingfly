@@ -11,8 +11,16 @@
             time-offset-gen))
 
 (defn session-end-time-gen
-  [start-time]
-  (gen/such-that #(> % start-time) (gen/large-integer* {:min start-time})))
+  [start-time & {:keys [absolute-timeout idle-timeout renewal-timeout]}]
+  (let [pred #(not (nil? %))
+        timeout (cond
+                  (pred absolute-timeout) absolute-timeout
+                  (pred idle-timeout) idle-timeout
+                  (pred renewal-timeout) renewal-timeout
+                  :else 0)
+        with-timeout (+ start-time (* timeout 1000))]
+    (gen/such-that #(> % with-timeout)
+                   (gen/large-integer* {:min with-timeout}))))
 
 (def session-id-gen
   (gen/not-empty gen/string-alphanumeric))
@@ -26,25 +34,46 @@
               gen/pos-int)))
 
 (def session-gen
-    (gen/fmap (fn [s]
-                (let [start-time (:start-time s)
-                      valid? (:valid? s)]
-                  (assoc s
-                         :end-time (when (not valid?)
-                                     (gen/generate
-                                       (session-end-time-gen start-time) 100)))))
-              (gen/hash-map
-                :session-id session-id-gen
+  (gen/hash-map :session-id session-id-gen
                 :start-time session-start-time-gen
-                :valid? session-valid?-gen
                 :absolute-timeout session-timeout-gen
                 :idle-timeout session-timeout-gen
-                :renewal-timeout session-timeout-gen)))
+                :renewal-timeout session-timeout-gen))
 
-(defn gen-random-sessions
-  ([] (gen-random-session 10))
-  ([n] (gen/sample session-gen n)))
+(def valid-session-gen
+  (gen/fmap #(assoc % :end-time nil :valid? true) session-gen))
+
+(def invalid-session-gen
+   (gen/fmap #(let [start-time (:start-time %)]
+                (assoc %
+                       :end-time (gen/generate
+                                   (session-end-time-gen start-time) 100)
+                       :valid? false))
+             session-gen))
+
+(def random-session-gen
+  (gen/one-of [valid-session-gen invalid-session-gen]))
 
 (defn ->map
   [sessions]
   (into {} (map #(vector (:session-id %) %) sessions)))
+
+(defn session-with-attrs-gen
+  [attrs] 
+  (gen/fmap (fn [s]
+              (merge s attrs))
+            random-session-gen))
+
+(defn timeout-session-gen
+  [timeout value] 
+  (gen/fmap #(let [start-time (:start-time %)]
+                (assoc % timeout value
+                         :end-time (gen/generate
+                                     (session-end-time-gen start-time
+                                                           timeout
+                                                           value))))
+            session-gen))
+
+(defn sample-timeout-session-gen
+  [timeout value n]
+  (gen/sample (timeout-session-gen timeout value) n))
