@@ -24,7 +24,7 @@
   (execute-query
     [this query]
     (let [sessions @(:database this)]
-      (apply query [sessions])))
+      (apply query [(into [] (vals sessions))])))
   )
 
 (defn make-session-repository
