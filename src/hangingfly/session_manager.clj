@@ -59,11 +59,10 @@
         invalidated-session)))
   (invalidate-sessions
     [this]
-    (let [query #(do %)
-          sessions (execute-query (:session-repo this) query)
-          invalid (filter #(session-timeout? this (:session-id (second %)))
+    (let [sessions (get-all-sessions (:session-repo this))
+          invalid (filter #(session-timeout? this (:session-id %))
                           sessions)]
-      (map #(invalidate-session this (:session-id (second %))) invalid)))
+      (map #(invalidate-session this (:session-id %)) invalid)))
   )
 
 (defn make-session-manager

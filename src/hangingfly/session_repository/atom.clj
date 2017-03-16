@@ -7,6 +7,9 @@
   (get-session
     [this sid]
     (get @(:database this) sid))
+  (get-all-sessions
+    [this]
+    (into [] (vals @(:database this))))
   (add-session
     [this session]
     (swap! (:database this) assoc (:session-id session) session)

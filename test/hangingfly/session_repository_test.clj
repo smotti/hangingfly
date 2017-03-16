@@ -24,6 +24,14 @@
       (let [result (get-session repo "NO-SUCH-SESSION")]
         (is (nil? result))))))
 
+(deftest test-get-all-sessions
+  (let [sessions (sample random-session-gen)
+        repo (->SessionRepository (atom (->map sessions)))
+        result (get-all-sessions repo)]
+    (is (= (count sessions) (count result)))
+    (is (= (sort (map :session-id sessions))
+           (sort (map :session-id result))))))
+
 (deftest test-add-session
   (let [sid "SESSION-ID"
         session {:session-id sid
@@ -69,8 +77,8 @@
 
 (deftest test-execute-query
   (let [query (fn [sessions]
-                (filter #(true? (:valid? (second %))) sessions))
+                (filter #(true? (:valid? %)) sessions))
         sessions (sample random-session-gen 60)
         repo (->SessionRepository (atom (->map sessions)))
         result (execute-query repo query)]
-    (is (every? #(true? (:valid? (second %))) result))))
+    (is (every? #(true? (:valid? %)) result))))
