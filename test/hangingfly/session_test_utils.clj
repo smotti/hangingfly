@@ -6,6 +6,11 @@
   (gen/such-that #(not= 0 %)
                  (gen/large-integer* {:min min-offset :max max-offset})))
 
+(defn start-time-gen
+  [timeout]
+  (- (System/currentTimeMillis)
+     (gen/generate (time-offset-gen :min-offset timeout
+                                    :max-offset (* timeout 2)))))
 (def session-start-time-gen
   (gen/fmap (fn [offset]
               (- (System/currentTimeMillis) offset))
@@ -62,3 +67,30 @@
   (gen/fmap (fn [s]
               (merge s attrs))
             random-session-gen))
+
+(defn absolute-timeout-session-gen
+  [timeout]
+  (let [scaled-timeout (* timeout 1000)]
+    (gen/fmap #(assoc % :start-time (start-time-gen scaled-timeout)
+                        :absolute-timeout timeout
+                        :idle-timeout (* timeout 3)
+                        :renewal-timeout (* timeout 3))
+              valid-session-gen)))
+
+(defn idle-timeout-session-gen
+  [timeout]
+  (let [scaled-timeout (* timeout 1000)]
+    (gen/fmap #(assoc % :start-time (start-time-gen scaled-timeout)
+                        :absolute-timeout (* timeout 3)
+                        :idle-timeout timeout
+                        :renewal-timeout (* timeout 3))
+              valid-session-gen)))
+
+(defn renewal-timeout-session-gen
+  [timeout]
+  (let [scaled-timeout (* timeout 1000)]
+    (gen/fmap #(assoc % :start-time (start-time-gen scaled-timeout)
+                        :absolute-timeout (* timeout 3)
+                        :idle-timeout (* timeout 3)
+                        :renewal-timeout timeout)
+              valid-session-gen)))

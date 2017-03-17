@@ -24,10 +24,10 @@
       (let [result (get-session repo "NO-SUCH-SESSION")]
         (is (nil? result))))))
 
-(deftest test-get-all-sessions
+(deftest test-get-sessions
   (let [sessions (sample random-session-gen)
         repo (->SessionRepository (atom (->map sessions)))
-        result (get-all-sessions repo)]
+        result (get-sessions repo)]
     (is (= (count sessions) (count result)))
     (is (= (sort (map :session-id sessions))
            (sort (map :session-id result))))))
@@ -39,8 +39,8 @@
         repo (->SessionRepository (atom {}))]
     (testing "the happy path"
       (let [result (add-session repo session)]
-        (is (= sid (:session-id result))) 
-        (is (= 1 (count @(:database repo))))))))
+        (is (not (nil? (get @(:database repo) sid))))
+        (is (= 1 (count result)))))))
 
 (deftest test-remove-session
   (let [sid "SESSION-ID"
@@ -64,10 +64,8 @@
                          :an-attribute 'world}
         repo (->SessionRepository (atom {sid session}))]
     (testing "the happy path"
-      (let [result (update-session repo updated-session)
-            repo-session (get @(:database repo) sid)]
-        (is (= (:session-id updated-session) (:session-id result)))
-        (is (= (:an-attribute updated-session) (:an-attribute result)))
+      (update-session repo updated-session)
+      (let [repo-session (get @(:database repo) sid)]
         (is (= (:session-id updated-session) (:session-id repo-session)))
         (is (= (:an-attribute updated-session) (:an-attribute repo-session)))))
     (testing "the unhappy path"
@@ -75,10 +73,10 @@
       (let [result (update-session repo updated-session)]
         (is (nil? result))))))
 
-(deftest test-execute-query
+(deftest test-find-sessions
   (let [query (fn [sessions]
                 (filter #(true? (:valid? %)) sessions))
         sessions (sample random-session-gen 60)
         repo (->SessionRepository (atom (->map sessions)))
-        result (execute-query repo query)]
+        result (find-sessions repo query)]
     (is (every? #(true? (:valid? %)) result))))

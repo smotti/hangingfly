@@ -63,3 +63,33 @@
                              :session-id
                              sid)]
      (map->Session merged-attrs))))
+
+(defn renew
+  [session]
+  (let [old-sid (:session-id session)
+        new-sid (generate-session-id)]
+    {:old (assoc session :next-session-id new-sid :end-time (System/currentTimeMillis))
+     :new (assoc session :session-id new-sid :previous-session-id old-sid)}))
+
+(defn terminate
+  [session]
+  (assoc session :valid? false :end-time (System/currentTimeMillis)))
+
+(defn- timedelta
+  [start]
+  (- (System/currentTimeMillis) start))
+
+(defn timeout?
+  ([session]
+   (let [{:keys [start-time absolute-timeout idle-timeout renewal-timeout]} session
+         delta (timedelta start-time)
+         pred #(>= delta (* % 1000))]
+     (some pred [absolute-timeout idle-timeout renewal-timeout])))
+  ([{:keys [start-time] :as session} timeout]
+   (let [delta (timedelta start-time)
+         pred #(>= delta (* % 1000))]
+     (pred (timeout session)))))
+
+(defn valid?
+  [session]
+  (:valid? session))
