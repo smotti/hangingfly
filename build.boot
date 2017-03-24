@@ -1,6 +1,7 @@
 (set-env!
   :source-paths #{"src" "test"}
-  :dependencies '[[adzerk/boot-test "1.2.0" :scope "test"]
+  :dependencies '[[org.clojure/core.async "0.3.442"]
+                  [adzerk/boot-test "1.2.0" :scope "test"]
                   [org.clojure/test.check "0.9.0" :scope "test"]])
 
 (require '[adzerk.boot-test :refer :all])

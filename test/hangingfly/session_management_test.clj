@@ -1,9 +1,39 @@
 (ns hangingfly.session-management-test
   (:require [clojure.test :refer :all]
-            [clojure.test.check.generators :refer [generate]]
+            [clojure.test.check.generators :refer [generate sample]]
+            [clojure.core.async :refer [>!! <!! alts!! chan close! timeout]]
             [hangingfly.session-management :refer :all]
             [hangingfly.session-repository.atom :refer [->SessionRepository]]
+            [hangingfly.session :refer [timeout?]]
             [hangingfly.session-test-utils :refer :all]))
+
+(deftest test-invalidate-sessions
+  (let [duration-sec 1
+        sample-size 10
+        absolute (sample (absolute-timeout-session-gen (* 60 60)) sample-size)
+        query (fn [sessions] (filter #(if (or (timeout? % :absolute-timeout)
+                                              (timeout? % :idle-timeout))
+                                        true
+                                        false)
+                                     sessions))
+        repo (->SessionRepository (atom (->map absolute)))
+        session-chan (chan)
+        [t-ch stop-ch] (invalidate-sessions repo session-chan duration-sec query)]
+    (<!! (timeout 1000))
+
+    (let [result (loop [sessions '()
+                        msg (alts!! [session-chan (timeout 100)])]
+                   (let [v (first msg)]
+                     (if (nil? v)
+                       sessions
+                       (recur (conj sessions v)
+                              (alts!! [session-chan (timeout 100)])))))]
+      (>!! stop-ch :stop)
+      (close! session-chan)
+      (is (= sample-size (count result)))
+      (is (every? #(not (:valid? %)) result))
+      (is (every? #(not (nil? (:end-time %))) result))
+      (is (= :stopped (<!! t-ch))))))
 
 (deftest test-new-session
   (testing "with no additional attributes"
