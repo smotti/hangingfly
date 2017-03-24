@@ -52,7 +52,7 @@
   send via the returned close-channel. After the thread terminated :stopped is
   put onto the channel, that is the first element of the vector this fn returns.
 
-  Note that you can use stop-management-proc which takes care of stopping
+  Note that you can use stop-mgmt-task which takes care of stopping
   this process.
 
   Note it is better to provide a buffered session-chan to avoid the loss of
@@ -95,7 +95,7 @@
     (valid? session)
     false))
 
-(defn stop-management-process
+(defn stop-mgmt-task
   [session-chan stop-chan]
   (>!! stop-chan :stop)
   (close! session-chan))
