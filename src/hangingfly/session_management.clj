@@ -19,10 +19,9 @@
   This fn is spawning a long running thread that fetches and invalidates
   the sessions. The invalidated sessions are than send to the caller by means
   of smaller CSPs via the session-chan. When the session-chan gets closed the
-  CSPs stop processing and the thread might terminate too, but to ensure that
-  everything gets cleaned up properly :stop has to be send via the returned
-  close-channel. After the thread terminated :stopped is put onto the channel,
-  that is the first element of the vector this fn returns.
+  CSPs terminate. To ensure that the thread is being stopped, a :stop has to be
+  send via the returned close-channel. After the thread terminated :stopped is
+  put onto the channel, that is the first element of the vector this fn returns.
 
   Note that you can use stop-invalidate-sessions which takes care of stopping
   this process.

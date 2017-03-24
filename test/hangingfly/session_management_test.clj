@@ -19,7 +19,8 @@
         repo (->SessionRepository (atom (->map absolute)))
         session-chan (chan)
         [t-ch stop-ch] (invalidate-sessions repo session-chan duration-sec query)]
-    (<!! (timeout 1000))
+
+    (<!! (timeout 1000)) ; Need to wait until the duration-sec is over
 
     (let [result (loop [sessions '()
                         msg (alts!! [session-chan (timeout 100)])]
