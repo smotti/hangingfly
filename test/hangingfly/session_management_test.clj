@@ -74,6 +74,35 @@
     (is (= (:old result) (get @(:database repo) sid)))
     (is (= (:new result) (get @(:database repo) (:session-id (:new result)))))))
 
+(deftest test-renew-sessions
+  (let [duration-sec 1
+        sample-size 10
+        renewal (sample (renewal-timeout-session-gen (* 60 5)) sample-size)
+        query (fn [sessions] (filter #(if (timeout? % :renewal-timeout)
+                                        true
+                                        false)
+                                     sessions))
+        repo (->SessionRepository (atom (->map renewal)))
+        session-chan (chan)
+        [t-ch stop-ch] (renew-sessions repo session-chan duration-sec query)]
+    
+    (<!! (timeout 1000)) ; Need to wait until the duration-sec is over
+
+    (let [result (loop [sessions '()
+                        msg (alts!! [session-chan (timeout 100)])]
+                   (let [v (first msg)]
+                     (if (nil? v)
+                       sessions
+                       (recur (conj sessions v)
+                              (alts!! [session-chan (timeout 100)])))))]
+      (>!! stop-ch :stop)
+      (close! session-chan)
+      (is (= sample-size (count result)))
+      (is (every? #(:valid? (:new %)) result))
+      (is (every? #(contains? (:new %) :previous-session-id) result))
+      (is (every? #(nil? (:end-time (:new %))) result))
+      (is (= :stopped (<!! t-ch))))))
+
 (deftest test-session-timeout?
   (let [absolute (generate (absolute-timeout-session-gen (* 60 60)))
         idle (generate (idle-timeout-session-gen (* 60 20)))
