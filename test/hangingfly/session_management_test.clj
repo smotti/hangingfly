@@ -66,7 +66,7 @@
         repo (->SessionRepository (atom {sid session}))
         result (with-redefs-fn {#'hangingfly.session/generate-salted-hash
                                 (fn [_] hashed-sid)}
-                 #(renew-session repo session))]
+                 #(renew-session repo sid))]
     (is (= '(:old :new) (keys result)))
     (is (= (:session-id (:old result)) (:previous-session-id (:new result))))
     (is (= (:next-session-id (:old result) (:session-id (:new result)))))
@@ -126,7 +126,7 @@
   (let [session (generate valid-session-gen)
         sid (:session-id session)
         repo (->SessionRepository (atom {sid session}))
-        result (terminate-session repo session)]
+        result (terminate-session repo sid)]
     (is (false? (:valid? result)))
     (is (not (nil? (:end-time result))))
     (is (empty @(:database repo)))))

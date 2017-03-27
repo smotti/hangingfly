@@ -30,8 +30,7 @@
 
   (renew-session
     [this sid]
-    (let [session (get-session (:repository this) sid)]
-      (mgmt/renew-session (:repository this) session)))
+    (mgmt/renew-session (:repository this) sid))
 
   (renew-sessions
     [this session-ch duration query]
@@ -55,8 +54,7 @@
 
   (terminate-session
     [this sid]
-    (let [session (get-session (:repository this) this)]
-      (mgmt/terminate-session (:repository this) session))))
+    (mgmt/terminate-session (:repository this) sid)))
 
 (defn make-session-manager
   ([] (make-session-manager (make-session-repository)))

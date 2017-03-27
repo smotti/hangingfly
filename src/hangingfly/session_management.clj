@@ -26,8 +26,9 @@
      session)))
 
 (defn renew-session
-  [repo session]
-  (let [{old-session :old new-session :new :as sessions} (renew session)]
+  [repo sid]
+  (let [session (get-session repo sid)
+        {old-session :old new-session :new :as sessions} (renew session)]
     (update-session repo old-session)
     (add-session repo new-session)
     sessions))
@@ -36,7 +37,7 @@
   "Just like invalidate-sessions. Though the query should only return sessions
   whose renewal-timeout was reached."
   [repo session-chan duration query]
-  (let [f #(renew-session repo %)]
+  (let [f #(renew-session repo (:session-id %))]
     (schedule-mgmt-task repo session-chan duration query f)))
 
 (defn schedule-mgmt-task
@@ -101,7 +102,8 @@
   (close! session-chan))
 
 (defn terminate-session
-  [repo session]
-  (let [terminated-session (terminate session)]
+  [repo sid]
+  (let [session (get-session repo sid)
+        terminated-session (terminate session)]
     (update-session repo terminated-session)
     terminated-session))
