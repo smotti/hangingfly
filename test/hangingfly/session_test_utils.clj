@@ -1,10 +1,31 @@
 (ns hangingfly.session-test-utils
   (:require [clojure.test.check.generators :as gen]))
 
+;; Custom keyword-gen because gen/keyword generates keywords
+;; that are too long.
+(def keyword-gen
+  (gen/fmap keyword
+            (gen/not-empty (gen/such-that #(<= (count %) 16)
+                                          gen/string-alphanumeric))))
+
 (defn time-offset-gen
   [& {:keys [min-offset max-offset] :or {min-offset 1000 max-offset 30000}}]
   (gen/such-that #(not= 0 %)
                  (gen/large-integer* {:min min-offset :max max-offset})))
+
+(def time-gen
+  (gen/fmap #(- (System/currentTimeMillis) %) (time-offset-gen)))
+
+(def date-gen
+  (gen/fmap #(java.util.Date. %) time-gen))
+
+(def session-attribute-value-gen
+  (gen/one-of [gen/boolean gen/int gen/string-alphanumeric time-gen date-gen]))
+
+(def session-attribute-gen
+  (gen/map keyword-gen
+           session-attribute-value-gen
+           {:min-elements 1 :max-elements 10}))
 
 (defn start-time-gen
   [timeout]
@@ -39,20 +60,28 @@
 
 (def session-gen
   (gen/hash-map :session-id session-id-gen
+                :salted-id session-id-gen
                 :start-time session-start-time-gen
                 :absolute-timeout session-timeout-gen
                 :idle-timeout session-timeout-gen
-                :renewal-timeout session-timeout-gen))
+                :renewal-timeout session-timeout-gen
+                :session-attributes session-attribute-gen
+                :previous-session-ids (gen/vector-distinct session-id-gen
+                                                           {:min-elements 0
+                                                            :max-elements 10})))
 
 (def valid-session-gen
-  (gen/fmap #(assoc % :end-time nil :valid? true) session-gen))
+  (gen/fmap #(assoc %
+                    :end-time nil
+                    :is-valid true
+                    :cause-for-termination nil) session-gen))
 
 (def invalid-session-gen
    (gen/fmap #(let [start-time (:start-time %)]
                 (assoc %
                        :end-time (gen/generate
                                    (session-end-time-gen start-time) 100)
-                       :valid? false))
+                       :is-valid false))
              session-gen))
 
 (def random-session-gen
@@ -63,7 +92,7 @@
   (into {} (map #(vector (:session-id %) %) sessions)))
 
 (defn session-with-attrs-gen
-  [attrs] 
+  [attrs]
   (gen/fmap (fn [s]
               (merge s attrs))
             random-session-gen))
