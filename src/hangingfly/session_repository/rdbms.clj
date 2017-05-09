@@ -1,7 +1,7 @@
 (ns hangingfly.session-repository.rdbms
   (:import java.sql.Connection)
-  (:require [hangingfly.session-repository.core :refer [delete-session
-                                                        get-session
+  (:require [hangingfly.session-repository.core :refer [delete!
+                                                        get-one
                                                         ISessionRepository]]
             [camel-snake-kebab.core :refer [->kebab-case ->snake_case]]
             [clojure.java.jdbc :as jdbc]
@@ -137,11 +137,15 @@
 (declare add-session get-session-attributes update-session)
 (defrecord SessionRepository [conn]
   ISessionRepository
-  (delete-session
+  (delete!
     [{db-spec :conn :as this} sid]
-    (first (jdbc/execute! db-spec (sql/format (sql-delete-session-cmd sid)))))
+    (let [result (first (jdbc/execute! db-spec
+                                       (sql/format
+                                        (sql-delete-session-cmd sid))))]
+      (when (= 1 result)
+        sid)))
 
-  (get-session
+  (get-one
     [{db-spec :conn :as this} sid]
     (jdbc/with-db-connection [conn db-spec]
       (let [session (if-let [s (first (jdbc/query conn
@@ -155,7 +159,7 @@
         (when session
           (assoc session :session-attributes attrs)))))
 
-  (get-sessions
+  (get-many
     [{db-spec :conn :as this} limit offset]
     (let [base (-> sql-select-many-qry
                    (sqlh/offset offset))
@@ -169,7 +173,7 @@
         (let [sessions (jdbc/query conn (sql/format query))]
           (doall (mapv #(get-session-attributes conn %) sessions))))))
 
-  (find-sessions
+  (find
     [{db-spec :conn :as this} query]
     (let [query (-> query
                     (sqlh/from :session))]
@@ -177,9 +181,9 @@
         (let [sessions (jdbc/query conn (sql/format query))]
           (doall (mapv #(get-session-attributes conn %) sessions))))))
 
-  (save-session
+  (save!
     [this {:keys [session-id session-attributes] :as session}]
-    (if-let [s (get-session this session-id)]
+    (if-let [s (get-one this session-id)]
       (update-session this session)
       (add-session this session))))
 
@@ -225,5 +229,5 @@
 
 (defn- update-session
   [this {:keys [session-id ] :as session}]
-  (delete-session this session-id)
+  (delete! this session-id)
   (add-session this session))
