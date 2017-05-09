@@ -2,10 +2,9 @@
   (:import java.io.File)
   (:require [hangingfly.session-repository.core :refer :all]
             [hangingfly.session-repository.rdbms :as sut]
-            [hangingfly.session-test-data :refer [absolute-sessions]]
             [hangingfly.session-test-utils :refer [valid-session-gen]]
             [clojure.test :as t]
-            [clojure.test.check.generators :refer [generate]]
+            [clojure.test.check.generators :refer [generate sample]]
             [clojure.java.io :refer [resource]]
             [clojure.java.jdbc :as jdbc]
             [clojure.java.shell :refer [sh]]
@@ -14,9 +13,9 @@
             [honeysql.core :as sql]
             [honeysql.helpers :as sqlh]))
 
-(declare keys->snake_case)
-
 (def ^:dynamic *DB* nil)
+
+(def ^:dynamic *SESSIONS* nil)
 
 (def SQLITE-CREATE-TABLES
   [(.getFile (resource "database/sqlite/hangingfly.up.sql"))])
@@ -41,20 +40,11 @@
 
 (defn insert-test-sessions
   [db]
-  (let [session-xform (comp keys->snake_case
-                            #(assoc %
-                                    :is-valid (bool->int (:is-valid %))
-                                    :previous-session-ids (join ","
-                                                                (:previous-session-ids %)))
-                            #(into {} %))
-        sessions (mapv session-xform absolute-sessions)
-        query (-> (sqlh/insert-into :session)
-                  (sqlh/values sessions)
-                  sql/format)]
-    (jdbc/db-do-prepared db true query)))
-
-(def keys->snake_case
-  (fn [m] (reduce-kv #(assoc %1 (->snake_case %2) %3) {} m)))
+  (let [test-sessions (sample valid-session-gen)]
+    (jdbc/with-db-transaction [conn db]
+      (doseq [s test-sessions]
+        (#'hangingfly.session-repository.rdbms/add-session {:conn conn} s)))
+    (alter-var-root #'*SESSIONS* (constantly test-sessions))))
 
 (defn with-sqlite
   [f]
@@ -87,10 +77,10 @@
 (t/deftest test-get-one
   (t/testing "session with specified id exists"
     (let [repo (sut/->SessionRepository *DB*)
-          session-id "n68"
-          session (first absolute-sessions)
+          session (first *SESSIONS*)
+          session-id (:session-id session)
           result (get-one repo session-id)]
-      (t/is (= session (dissoc result :session-attributes)))))
+      (t/is (= session result))))
   (t/testing "session with specified id doesn't exist"
     (let [repo (sut/->SessionRepository *DB*)
           session-id "NOPE"
@@ -99,9 +89,9 @@
 
 (t/deftest test-get-many
   (let [repo (sut/->SessionRepository *DB*)
-        total (count absolute-sessions)]
+        total (count *SESSIONS*)]
     (t/testing "get all sessions"
-      (t/is (= total (count (get-many repo)))))
+      (t/is (= *SESSIONS* (get-many repo))))
     (t/testing "get a limited amount of sessions"
       (let [limit 5
             result (get-many repo :limit limit)]
@@ -120,14 +110,14 @@
 (t/deftest test-find
   (let [repo (sut/->SessionRepository *DB*)]
     (t/testing "find session by id"
-      (let [session-id "n68"
-            session (first absolute-sessions)
+      (let [session (first *SESSIONS*)
+            session-id (:session-id session)
             query (-> (sqlh/select :*)
                       (sqlh/where [:= :session-id session-id]))
             result (first (find repo query))]
         (t/is (= session result))))
     (t/testing "find all valid sessions"
-      (let [sessions (filter #(true? (:is-valid %)) absolute-sessions)
+      (let [sessions (filter #(true? (:is-valid %)) *SESSIONS*)
             query (-> (sqlh/select :*)
                       (sqlh/where [:= :is-valid 1]))
             result (find repo query)]
@@ -143,13 +133,13 @@
       (let [session (dissoc (generate valid-session-gen) :session-attributes)
             save-result (save repo session)
             qry-result (get-one repo (:session-id session))]
-        (t/is (= 1 save-result))
+        (t/is (= session save-result))
         (t/is (= session (dissoc qry-result :session-attributes)))))
     (t/testing "Save a new session with additional attributes"
       (let [session (generate valid-session-gen)
             save-result (save repo session)
             qry-result (get-one repo (:session-id session))]
-        (t/is (= 1 save-result))
+        (t/is (= session save-result))
         (t/is (= session qry-result))))
     (t/testing "Update an existing session"
       (let [session (generate valid-session-gen)

@@ -9,7 +9,9 @@
             [honeysql.core :as sql]
             [honeysql.helpers :as sqlh]))
 
-(declare add-session keys->snake_case select-attr-value update-session)
+;;;
+;;; Helpers
+;;;
 
 (defn attr->attr-value
   [{:keys [attribute-id data-type value] :as attr}]
@@ -35,26 +37,14 @@
     0 false
     1 true))
 
-(defn- insert-attr-cmd
-  [attr]
-  (-> (sqlh/insert-into :session-attributes)
-      (sqlh/values [attr])))
-
-(defn- attr-xform
+(defn- insert-attr-xform
   [id [n v]]
-  {:session-id id :name (name n)
+  {:session-id id
+   :name (name n)
    :value (if (not (instance? java.lang.Boolean v)) v (bool->int v))
    :data-type (data-type? v)})
 
-(defn insert-attr-value-cmd
-  [v]
-  (-> (sqlh/insert-into :session-attribute-value)
-      (sqlh/values [v])))
-
-(defn- insert-attr-xform
-  [id [n v]]
-  {:session-id id :name (name n) :data-type (data-type? v)})
-
+(declare keys->snake_case)
 (def ^:private insert-xform
   (comp keys->snake_case
         #(assoc %
@@ -69,36 +59,16 @@
 (defn- keys->snake_case
   [m] (reduce-kv #(assoc %1 (->snake_case %2) %3) {} m))
 
-(defn- sql-delete-session
-  [id]
-  (-> (sqlh/delete-from :session)
-      (sqlh/where [:= :session_id id])))
-
-(defn- select-attrs
-  [id]
-  (-> (sqlh/select :name
-                   :data_type
-                   :value.string
-                   :value.number
-                   :value.date
-                   :value.bool)
-      (sqlh/from [:session_attributes :attrs])
-      (sqlh/where [:= :session_id id])
-      (sqlh/left-join [select-attr-value :value] [:= :value.attribute_id :attrs.id])))
-
-(def ^:private select-attr-value
-  (-> (sqlh/select :attribute_id :string :number :date :bool)
-      (sqlh/from :session_attribute_value)))
-
-(def select-many
-  (-> (sqlh/select :*)
-      (sqlh/from :session)))
-
-(defn- select-session
-  [id]
-  (-> (sqlh/select :*)
-      (sqlh/from :session)
-      (sqlh/where [:= :session_id id])))
+(defn- select-attr-xform
+  [a]
+  (let [attr-name (keyword (:name a))
+        attr-type (keyword (:data_type a))
+        attr-value (condp = attr-type
+                     :bool (int->bool (attr-type a))
+                     :date (java.util.Date. (attr-type a))
+                     (attr-type a))
+        attr [attr-name attr-value]]
+    attr))
 
 (def ^:private select-xform
   (comp keys->kebab-case
@@ -109,37 +79,85 @@
                                           []
                                           (cstr/split ids #","))))))
 
+;;;
+;;; SQL CMDs & QUERIEs
+;;;
+
+(defn- sql-delete-session-cmd
+  [id]
+  (-> (sqlh/delete-from :session)
+      (sqlh/where [:= :session_id id])))
+
+(defn- sql-insert-attr-cmd
+  [attr]
+  (-> (sqlh/insert-into :session-attributes)
+      (sqlh/values [(dissoc attr :value)])))
+
+(defn- sql-insert-attr-value-cmd
+  [v]
+  (-> (sqlh/insert-into :session-attribute-value)
+      (sqlh/values [v])))
+
+(defn- sql-insert-session-cmd
+  [s]
+  (-> (sqlh/insert-into :session)
+      (sqlh/values [(insert-xform (dissoc s :session-attributes))])))
+
+(declare sql-select-attr-value-qry)
+(defn- sql-select-attrs-qry
+  [id]
+  (-> (sqlh/select :name
+                   :data_type
+                   :value.string
+                   :value.number
+                   :value.date
+                   :value.bool)
+      (sqlh/from [:session_attributes :attrs])
+      (sqlh/where [:= :session_id id])
+      (sqlh/left-join [sql-select-attr-value-qry :value] [:= :value.attribute_id :attrs.id])))
+
+(def ^:private sql-select-attr-value-qry
+  (-> (sqlh/select :attribute_id :string :number :date :bool)
+      (sqlh/from :session_attribute_value)))
+
+(def sql-select-many-qry
+  (-> (sqlh/select :*)
+      (sqlh/from :session)))
+
+(defn- sql-select-session-qry
+  [id]
+  (-> (sqlh/select :*)
+      (sqlh/from :session)
+      (sqlh/where [:= :session_id id])))
+
+;;;
+;;; SESSION REPOSITORY
+;;;
+
+(declare add-session get-session-attributes update-session)
 (defrecord SessionRepository [conn]
   ISessionRepository
   (delete-session
-    [this sid]
-    (let [db-spec (:conn this)]
-      (first (jdbc/execute! db-spec (sql/format (sql-delete-session sid))))))
+    [{db-spec :conn :as this} sid]
+    (first (jdbc/execute! db-spec (sql/format (sql-delete-session-cmd sid)))))
+
   (get-session
-    [this sid]
-    (let [db-spec (:conn this)
-          session (if-let [s (first (jdbc/query db-spec
-                                                (sql/format
-                                                 (select-session sid))))]
-                    (select-xform s)
-                    nil)
-          xform #(let [attr-name (keyword (:name %))
-                       attr-type (keyword (:data_type %))
-                       attr-value (condp = attr-type
-                                    :bool (int->bool (attr-type %))
-                                    :date (java.util.Date. (attr-type %))
-                                    (attr-type %))
-                       attr [attr-name attr-value]]
-                   attr)
-          attrs (->> (jdbc/query db-spec (sql/format (select-attrs sid)))
-                     (map xform)
-                     (into {}))]
-      (when session
-        (assoc session :session-attributes attrs))))
+    [{db-spec :conn :as this} sid]
+    (jdbc/with-db-connection [conn db-spec]
+      (let [session (if-let [s (first (jdbc/query conn
+                                                  (sql/format
+                                                   (sql-select-session-qry sid))))]
+                      (select-xform s)
+                      nil)
+            attrs (->> (jdbc/query conn (sql/format (sql-select-attrs-qry sid)))
+                       (map select-attr-xform)
+                       (into {}))]
+        (when session
+          (assoc session :session-attributes attrs)))))
+
   (get-sessions
-    [this limit offset]
-    (let [db-spec (:conn this)
-          base (-> select-many
+    [{db-spec :conn :as this} limit offset]
+    (let [base (-> sql-select-many-qry
                    (sqlh/offset offset))
           query (if limit
                   (-> base
@@ -147,60 +165,65 @@
                   (-> base
                       (sqlh/limit (-> (sqlh/select :%count.*)
                                       (sqlh/from :session)))))]
-      (jdbc/query db-spec (sql/format query))))
+      (jdbc/with-db-connection [conn db-spec]
+        (let [sessions (jdbc/query conn (sql/format query))]
+          (doall (mapv #(get-session-attributes conn %) sessions))))))
+
   (find-sessions
-    [this query]
-    (let [db-spec (:conn this)
-          query (-> query
-                    (sqlh/from :session))
-          result (jdbc/query db-spec (sql/format query))]
-      (map select-xform result)))
-  ;; TODO: Observable behavior should be different not just returning a 1 or 0
+    [{db-spec :conn :as this} query]
+    (let [query (-> query
+                    (sqlh/from :session))]
+      (jdbc/with-db-connection [conn db-spec]
+        (let [sessions (jdbc/query conn (sql/format query))]
+          (doall (mapv #(get-session-attributes conn %) sessions))))))
+
   (save-session
-    [{db-spec :conn :as this}
-     {:keys [session-id session-attributes] :as session}]
+    [this {:keys [session-id session-attributes] :as session}]
     (if-let [s (get-session this session-id)]
       (update-session this session)
-      (add-session db-spec session))))
+      (add-session this session))))
 
 (defn- add-session
-  [db-spec {:keys [session-id session-attributes] :as session}]
-  (let [attr-insert-fn (fn [conn attr]
-                         (let [insert-cmd (comp insert-attr-cmd
-                                                #(dissoc % :value))
-                               stmt (sql/format (insert-cmd attr))
-                               id (-> (jdbc/db-do-prepared-return-keys conn stmt)
-                                      first
-                                      val)]
-                           (assoc attr :attribute-id id)))
-        session-insert-cmd (-> (sqlh/insert-into :session)
-                               (sqlh/values [(insert-xform
-                                              (dissoc session
-                                                      :session-attributes))]))
-        attrs (mapv #(attr-xform session-id %)
-                    (:session-attributes session))
-        return (first (jdbc/db-do-prepared db-spec (sql/format session-insert-cmd)))]
-    (if (= 1 return)
-      (let [attrs (jdbc/with-db-transaction [conn db-spec]
-                    (doall (mapv #(attr-insert-fn conn %) attrs)))
-            attr-value-insert-fn (fn [conn value]
-                                   ((comp #(jdbc/db-do-prepared conn %)
-                                          sql/format
-                                          insert-attr-value-cmd)
-                                    value))
-            attrs-values (mapv attr->attr-value attrs)]
-        (jdbc/with-db-transaction [conn db-spec]
-          (doseq [value attrs-values]
-            (attr-value-insert-fn conn value)))
-        return)
-      return)))
+  [{db-spec :conn :as this} session]
+  (letfn [(insert-session [conn s]
+            (let [qry (sql/format (sql-insert-session-cmd s))]
+              (jdbc/db-do-prepared conn qry)
+              s))
+          (insert-attributes [conn {:keys [session-id] :as s}]
+            (let [as (mapv #(insert-attr-xform session-id %)
+                           (:session-attributes s))
+                  qry #(sql/format (sql-insert-attr-cmd %))]
+              (doall (mapv #(->> (jdbc/db-do-prepared-return-keys conn (qry %))
+                                 first
+                                 val
+                                 (assoc % :attribute-id))
+                           as))))
+          (insert-attributes-values [conn as]
+            (let [vs (mapv attr->attr-value as)
+                  qry #(sql/format (sql-insert-attr-value-cmd %))]
+              (doall (mapv #(do (jdbc/db-do-prepared conn (qry %))
+                                %)
+                           vs))))]
+    (jdbc/with-db-transaction [conn db-spec]
+      (->> session
+           (insert-session conn)
+           (insert-attributes conn)
+           (insert-attributes-values conn))))
+  session)
+
+(defn- get-session-attributes
+  [conn s]
+  (->> (jdbc/query conn (sql/format (sql-select-attrs-qry (:session_id s))))
+       (map select-attr-xform)
+       (into {})
+       (assoc s :session-attributes)
+       select-xform))
 
 (defn make-session-repo
   [db-conn]
   (->SessionRepository db-conn))
 
 (defn- update-session
-  [{db-spec :conn :as this} {:keys [session-id ] :as session}]
-  (jdbc/with-db-transaction [conn db-spec]
-    (delete-session this session-id)
-    (add-session conn session)))
+  [this {:keys [session-id ] :as session}]
+  (delete-session this session-id)
+  (add-session this session))
