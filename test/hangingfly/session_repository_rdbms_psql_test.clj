@@ -1,42 +1,23 @@
-(ns hangingfly.session-repository-rdbms-test
-  (:import java.io.File)
-  (:require [hangingfly.session-repository.core :refer :all]
-            [hangingfly.session-repository.rdbms :as sut]
+(ns hangingfly.session-repository-rdbms-psql-test
+  (:import com.opentable.db.postgres.embedded.EmbeddedPostgres
+           org.flywaydb.core.Flyway)
+  (:require [hangingfly.session-repository.rdbms :as sut]
+            [hangingfly.session-repository.core :refer :all]
             [hangingfly.session-test-utils :refer [valid-session-gen]]
             [clojure.test :as t]
             [clojure.test.check.generators :refer [generate sample]]
-            [clojure.java.io :refer [resource]]
             [clojure.java.jdbc :as jdbc]
-            [clojure.java.shell :refer [sh]]
-            [clojure.string :refer [join]]
-            [camel-snake-kebab.core :refer [->kebab-case ->snake_case]]
-            [honeysql.core :as sql]
             [honeysql.helpers :as sqlh]))
+
+;;;
+;;; Fixtures and other required test utils
+;;;
 
 (def ^:dynamic *DB* nil)
 
+(def ^:dynamic *PG* nil)
+
 (def ^:dynamic *SESSIONS* nil)
-
-(def SQLITE-CREATE-TABLES
-  [(.getFile (resource "database/sqlite/hangingfly.up.sql"))])
-
-(defn create-tmp-db
-  []
-  (let [tmp-db-file (File/createTempFile "test_" ".sqlite")]
-    (doseq [script SQLITE-CREATE-TABLES]
-      (sh "/bin/sh"
-          "-c"
-          (str "sqlite3 "
-               (.getAbsolutePath tmp-db-file)
-               " < "
-               script)))
-    tmp-db-file))
-
-(defn bool->int
-  [x]
-  (condp = x
-    false 0
-    true 1))
 
 (defn insert-test-sessions
   [db]
@@ -46,22 +27,36 @@
         (#'hangingfly.session-repository.rdbms/add-session {:conn conn} s)))
     (alter-var-root #'*SESSIONS* (constantly test-sessions))))
 
-(defn with-sqlite
+(defn with-postgresql
   [f]
-  (let [db-file (create-tmp-db)
-        db-spec {:connection-uri (str "jdbc:sqlite:"
-                                      (.getAbsolutePath db-file))}]
+  (let [pg (EmbeddedPostgres/start)
+        db-spec {:connection-uri (.getJdbcUrl pg "postgres" "template1")}]
+    (alter-var-root #'*PG* (constantly pg))
     (alter-var-root #'*DB* (constantly db-spec))
-    (jdbc/with-db-connection [conn db-spec]
-      (insert-test-sessions conn))
     (f)
-    (.delete db-file)))
+    (.close pg)))
 
-(t/use-fixtures :each with-sqlite)
+(defn with-clean-tables
+  [f]
+  (let [ds (.getTemplateDatabase *PG*)
+        flyway (doto (Flyway.)
+                 (.setLocations (into-array ["database/postgresql"]))
+                 (.setDataSource ds))]
+    (.migrate flyway)
+    (insert-test-sessions *DB*)
+    (f)
+    (.clean flyway)))
 
-;;;;;;;;;;
-;;; TESTS
-;;;;;;;;;;
+;;;
+;;; Tests
+;;;
+
+(t/use-fixtures :once with-postgresql)
+(t/use-fixtures :each with-clean-tables)
+
+(t/deftest testing-fixtures
+  (t/is (= (count *SESSIONS*)
+           (count (jdbc/query *DB* "select * from session")))))
 
 (t/deftest test-delete-session!
   (let [repo (sut/->SessionRepository *DB*)]

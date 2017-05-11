@@ -7,7 +7,9 @@
                   [honeysql "0.8.2"]
                   [adzerk/boot-test "1.2.0" :scope "test"]
                   [org.clojure/test.check "0.9.0" :scope "test"]
-                  [org.xerial/sqlite-jdbc "3.16.1" :scope "test"]])
+                  [org.xerial/sqlite-jdbc "3.16.1" :scope "test"]
+                  [org.flywaydb/flyway-core "4.2.0" :scope "test"]
+                  [com.opentable.components/otj-pg-embedded "0.7.1" :scope "test"]])
 
 (require '[adzerk.boot-test :refer :all])
 

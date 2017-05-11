@@ -41,7 +41,10 @@
   [id [n v]]
   {:session-id id
    :name (name n)
-   :value (if (not (instance? java.lang.Boolean v)) v (bool->int v))
+   :value (condp #(instance? %1 %2) v
+            java.lang.Boolean (bool->int v)
+            java.util.Date (.getTime v)
+            v)
    :data-type (data-type? v)})
 
 (declare keys->snake_case)
@@ -191,7 +194,7 @@
   [{db-spec :conn :as this} session]
   (letfn [(insert-session [conn s]
             (let [qry (sql/format (sql-insert-session-cmd s))]
-              (jdbc/db-do-prepared conn qry)
+              (jdbc/execute! conn qry)
               s))
           (insert-attributes [conn {:keys [session-id] :as s}]
             (let [as (mapv #(insert-attr-xform session-id %)
